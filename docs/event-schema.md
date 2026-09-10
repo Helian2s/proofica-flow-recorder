@@ -1,55 +1,66 @@
-# Event Schema
+# Event model
 
-## Event Envelope
+[← Repository overview](../README.md)
 
-Every batch contains:
+The canonical contracts live in [packages/schema/src/index.ts](../packages/schema/src/index.ts). Both runtime modes use the same types. The exported JSON Schema describes part of the batch envelope; it is not a complete runtime validator for all nested fields.
 
-- batch metadata
-- session metadata
-- an ordered list of normalized events
+## Batches and session exports
 
-The canonical TypeScript definitions live in [packages/schema/src/index.ts](/home/val/Documents/proofica/flow-recorder/packages/schema/src/index.ts).
+| Shape             | Contents                                                                                      | Used by                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `TransportBatch`  | Batch ID, mode, send timestamp, session metadata, and events; optional app ID and endpoint    | HTTP, console, and extension bridge transports                      |
+| `ExportedSession` | Export timestamp, mode, session metadata, diagnostics, snapshots, and events; optional app ID | `window.FlowRecorder.exportSession()` and extension status messages |
 
-## Base Event Fields
+A transport batch does **not** contain full snapshots. An event's `snapshot_ref` points to an object held in the session export. Consumers that need HTML fragments must obtain that export; the HTTP path does not deliver the snapshot objects today.
 
-Every event contains:
+## Event envelope
 
-- `event_id`
-- `visitor_id`
-- `session_id`
-- `pageview_id`
-- `tab_id`
-- `route_id`
-- `state_id`
-- `ts_unix_ms`
-- `ts_perf_ms`
-- `sequence_no`
-- `mode`
-- `url`, `url_path`, `url_hash`
-- `title`, `referrer`
-- viewport metadata
-- document ready and visibility state
+| Field group | Examples                                                                                | Meaning                                                                |
+| ----------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Identity    | `event_id`, `visitor_id`, `session_id`, `pageview_id`, `route_id`, `tab_id`, `state_id` | Correlates interactions with a visitor, page, route, and current state |
+| Ordering    | `sequence_no`, `ts_unix_ms`, `ts_perf_ms`                                               | Recorder-local order, wall-clock time, and performance-clock time      |
+| Source      | `mode`, `category`, `event_type`                                                        | Runtime mode and event classification                                  |
+| Page        | `url`, `url_path`, `url_hash`, `title`, `referrer`                                      | Page location and document metadata                                    |
+| Environment | `viewport`, `document_ready_state`, `visibility_state`                                  | Viewport geometry, scroll position, and document state                 |
 
-## Categories
+Some identifiers and optional context fields can be null. A state ID is not available until a state has settled. Sequence numbers belong to the recorder instance and do not establish ordering across tabs.
 
-- `user`: clicks, input, submit, keyboard, scroll markers
-- `navigation`: document load, route change, history, visibility/page events
-- `system`: network start/end, mutation bursts, state settle lifecycle, snapshots
+## Event categories
 
-## Replay-Oriented Fields
+| Category     | Examples                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `user`       | `click`, `input`, `change`, `submit`, keyboard events, `scroll.start`, `scroll.progress`, `scroll.end`                                  |
+| `navigation` | `document.load`, `history.pushState`, `history.popstate`, `route.change`, visibility and page lifecycle events                          |
+| `system`     | `network.request.start`, `network.request.end`, `dom.mutation.burst`, `state.settling.start`, `state.settled`, `state.snapshot.created` |
 
-Action-like events can additionally include:
+Raw browser events remain in the stream alongside higher-level markers. One interaction can produce several events, such as pointer, mouse, click, network, and settlement records. A replay generator will need to choose which represent executable actions.
 
-- `action_kind`
-- `target`
-- `selectors`
-- `visible_context`
-- `captured_value`
-- `redaction`
-- `replay_hints`
-- `state_id_after`
-- container and heading context
+## Context for future replay
 
-## Snapshots
+- `action_kind` normalizes events into categories such as `action.click`, `action.type`, and `action.submit`.
+- `target` describes the element, its geometry, and nearby form, landmark, heading, or container.
+- `selectors` contains ranked locator candidates with strategy, confidence, stability, and rationale. Ranking does not guarantee uniqueness.
+- `visible_context` summarizes selected UI elements, headings, focus, and detected dialogs or drawers.
+- `captured_value` and `redaction` describe input-value handling. They do not certify that other event fields are redacted.
+- `replay_hints` carries suggested waits and context flags. It is advisory metadata, not executable automation.
+- `network` carries request metadata when captured; it does not include request or response bodies.
 
-Snapshots are not captured on every event. Default `balanced` mode captures them at meaningful boundaries such as route changes, submits, or settled UI state.
+## State transitions and snapshots
+
+The recorder emits `state.settled` with the newly created `state_id`, `state_id_after`, and a settlement reason. If snapshot capture is enabled, the event also references the snapshot. Earlier user events are not updated with that resulting state.
+
+| Snapshot mode    | Behavior                                                              |
+| ---------------- | --------------------------------------------------------------------- |
+| `off`            | No state snapshots                                                    |
+| `balanced`       | Bounded fragments of the latest target and selected nearby containers |
+| `enhanced-local` | The same target context plus a truncated body fragment                |
+
+Snapshots include visible context, a DOM signature, route-template hints, and HTML fragments. Fragment limits are based on string length rather than encoded byte size. A snapshot can have no fragments when there is no eligible target.
+
+## Example data
+
+The [session fixtures](../examples/exported-sessions) cover [forms](../examples/exported-sessions/simple-form-flow.json), [modals](../examples/exported-sessions/modal-flow.json), [SPA navigation](../examples/exported-sessions/spa-navigation-flow.json), and [async lists](../examples/exported-sessions/async-loaded-list-flow.json).
+
+These are illustrative fixtures, not golden recordings of the current implementation. Some show enriched action-to-state relationships that the runtime does not currently backfill. Use the TypeScript contracts and a fresh demo recording to check current behavior.
+
+For data handling limitations, see [privacy and redaction](privacy-redaction.md).

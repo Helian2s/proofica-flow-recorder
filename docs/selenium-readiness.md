@@ -1,23 +1,34 @@
-# Selenium Readiness
+# Replay roadmap
 
-This repository does not generate Selenium tests yet, but the event model is shaped so that generation can be added as the next milestone.
+[← Repository overview](../README.md)
 
-## Fields Added For Future Replay
+Flow Recorder currently captures data that could support a Selenium generator. It does not generate test files, execute Selenium, or verify that a recorded session can be replayed.
 
-- prioritized selector candidates with confidence and rationale
-- normalized `action_kind`
-- `state_id` and `state_id_after`
-- visible context snapshots
-- route template guesses
-- dominant container signatures
-- modal, landmark, heading, and form context
-- wait hints derived from quiet-window and network-idle observation
+## Foundations already present
 
-## Expected Next Step
+| Captured information                       | Possible use in a generator                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------- |
+| Ranked locator candidates                  | Try test hooks and semantic locators before structural fallbacks                  |
+| Normalized `action_kind`                   | Map input, click, select, toggle, submit, and scroll activity to automation steps |
+| Route and state markers                    | Segment a flow and identify changes after an action                               |
+| DOM-quiet and network-idle hints           | Suggest waits around asynchronous interactions                                    |
+| Form, modal, landmark, and heading context | Scope locators and identify the active view                                       |
+| Snapshot fragments and visible context     | Inspect surrounding UI when selecting locators or assertions                      |
 
-A future generator should be able to:
+These are inputs to a future generator, not guarantees of replay correctness. The [example sessions](../examples/exported-sessions) illustrate possible annotations, including relationships that the current recorder does not populate on earlier action events.
 
-1. map recorded events to Selenium actions
-2. choose the best locator candidate
-3. infer waits from `state.settled`, route change, and network markers
-4. cluster repeated states into future view abstractions
+## Work before generation
+
+1. **Make capture dependable.** Apply configuration before initialization, close redaction gaps, and restore passing build and verification commands.
+2. **Preserve complete recordings.** Deliver snapshot bodies with their references, refresh extension exports before download, and add retry and retention policies.
+3. **Define action-to-state relationships.** Associate actions with later settled states explicitly, including timeout outcomes, navigation, and overlapping requests.
+4. **Validate locator selection.** Check uniqueness, escaping, repeated elements, dynamic IDs, frames, and shadow roots.
+5. **Define replay inputs.** Supply synthetic values or named test parameters when recorded values are masked or omitted; exported values may also be normalized or truncated.
+
+## A first generator
+
+A small initial generator could consume an `ExportedSession`, select executable actions from the event stream, map locator strategies to Selenium calls, and insert explicit waits. It should report unsupported actions and ambiguous targets rather than silently guessing.
+
+A useful first milestone would replay the local demo's form submission and one delayed modal flow. Validation should compare the resulting UI state and surface failures caused by changed locators or timing.
+
+After that, the project could explore reusable page abstractions, richer assertions, and clustering similar settled states. These remain future work.
